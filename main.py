@@ -2,6 +2,10 @@
 # to run file: python3 main.py
 # to run streamlit frontend do: streamlit run main.py 
 
+
+# ACTIVATE VIRTUAL ENV: source venv/bin/activate
+
+
 # pip install command: pip install pytesseract pillow streamlit 
 
 #import streamlit as st 
