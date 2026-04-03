@@ -1,4 +1,5 @@
-# this is our main file (run file in command: import pytesseract)
+# this is our main file (run file in command: import pytesseract) -- 
+# to run file: python3 main.py
 # to run streamlit frontend do: streamlit run main.py 
 
 # pip install command: pip install pytesseract pillow streamlit 
@@ -13,7 +14,7 @@
 # pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 import sys
-import streamlit as st 
+# import streamlit as st 
 try:
     import pytesseract
     from PIL import Image
