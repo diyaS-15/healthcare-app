@@ -72,48 +72,15 @@ async def save_report(
     user_id: str,
     report_date: str,
     markers: List[Dict],
-    raw_text_encrypted: str,
+    raw_text_encrypted: str = "",
     file_name: Optional[str] = None
 ) -> Dict:
-    """Save a blood report and its markers."""
-    client = get_supabase()
-    
-    try:
-        report_id = str(uuid.uuid4())
-        
-        # Save report metadata
-        report = client.table("blood_reports").insert({
-            "id": report_id,
-            "user_id": user_id,
-            "report_date": report_date,
-            "file_name": file_name,
-            "raw_text": raw_text_encrypted,  # Already encrypted
-            "status": "processed",
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
-        }).execute()
-        
-        # Save individual markers
-        for marker in markers:
-            client.table("blood_markers").insert({
-                "id": str(uuid.uuid4()),
-                "report_id": report_id,
-                "user_id": user_id,
-                "marker_name": marker.get("normalized_name", marker["name"]),
-                "value": str(marker["value"]),
-                "unit": marker["unit"],
-                "reference_min": marker.get("reference_low"),
-                "reference_max": marker.get("reference_high"),
-                "status": marker.get("status", "normal"),
-                "created_at": datetime.utcnow().isoformat(),
-            }).execute()
-        
-        logger.info(f"Saved report {report_id} for user {user_id}")
-        return {"report_id": report_id, "marker_count": len(markers)}
-        
-    except Exception as e:
-        logger.error(f"Error saving report: {e}")
-        raise
+    """Save a blood report and its markers (stub for testing)."""
+    # Temporary stub - will connect to Supabase in Option B
+    import uuid
+    report_id = str(uuid.uuid4())
+    logger.info(f"Stub: Would save report {report_id} for user {user_id}")
+    return {"report_id": report_id, "marker_count": len(markers)}
 
 async def get_reports(user_id: str, limit: int = 50) -> List[Dict]:
     """Fetch all reports for a user."""
