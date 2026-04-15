@@ -45,5 +45,19 @@ if __name__ == "__main__":
     print(result)
     print("*" * 20)
 
+import json
+# Convert to json
+data = {"extracted_text": result}
+
+json_string = json.dumps(data, indent = 4)
+
+print(json_string)
+
+# Save the json to a file
+# The difference btw .dumps and .dump is .dumps return a string while  .dump writes directly to a file
+with open("ingredients.json", "w") as file:
+    json.dump(data, file, indent = 4)
+
+
 
 
