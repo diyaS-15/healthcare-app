@@ -6,6 +6,7 @@ Add `user: dict = Depends(get_current_user)` to any protected route.
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
+from typing import Optional
 from config import get_settings
 import logging
 
@@ -66,8 +67,8 @@ async def get_current_user(
 
 
 async def get_current_user_optional(
-    creds: HTTPAuthorizationCredentials = Depends(bearer) | None = None
-) -> dict | None:
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer)
+) -> Optional[dict]:
     """
     Optional auth — returns user if token provided and valid, None otherwise.
     Use for endpoints that support both public and authenticated access.

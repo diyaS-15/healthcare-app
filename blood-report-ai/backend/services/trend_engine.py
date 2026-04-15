@@ -210,6 +210,29 @@ def run_full_analysis(markers_over_time: Dict[str, List[Dict]]) -> Dict:
         "stability_score": stability,
         "analyzed_count": len(results),
     }
+
+
+# ━━━━━━━━━━━━━━ MARKER NORMALIZATION / ALIASING ━━━━━━━━━━━━━━
+
+_ALIAS_TO_STANDARD = {
+    "hb": "hemoglobin",
+    "hemoglobin": "hemoglobin",
+    "hemoglobin (g/dl)": "hemoglobin",
+    "rbc": "red_blood_cells",
+    "red cell count": "red_blood_cells",
+    "wbc": "white_blood_cells",
+    "white cell count": "white_blood_cells",
+    "plt": "platelets",
+    "platelet count": "platelets",
+    "mcv": "mean_cell_volume",
+    "mch": "mean_cell_hemoglobin",
+    "mchc": "mean_cell_hemoglobin_concentration",
+}
+
+DISPLAY_NAMES = {
+    "hemoglobin": "Hemoglobin",
+    "red_blood_cells": "Red Blood Cells",
+    "white_blood_cells": "White Blood Cells",
     "neutrophils": "Neutrophils",
     "lymphocytes": "Lymphocytes",
     "monocytes": "Monocytes",
