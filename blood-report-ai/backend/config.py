@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     app_name: str = "Blood Report AI"
     app_version: str = "2.0.0"
     
-    allowed_origins: str = "http://localhost:5173,http://localhost:3000"
+    allowed_origins: str = "http://localhost:5173,http://localhost:3000,http://127.0.0.1:8000,http://localhost:8000"
     max_upload_size_mb: int = 20
 
     # ── Database ──────────────────────────────────────────────
@@ -53,6 +53,18 @@ class Settings(BaseSettings):
     def origins_list(self) -> List[str]:
         """Parse origins from comma-separated string."""
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
+
+    @property
+    def allowed_hosts_list(self) -> List[str]:
+        """Parse allowed hosts (without http:// scheme) for TrustedHostMiddleware."""
+        hosts = []
+        for origin in self.origins_list:
+            # Remove http:// or https:// and port if present
+            host = origin.replace("http://", "").replace("https://", "")
+            host = host.split(":")[0].strip()  # Remove port
+            if host:
+                hosts.append(host)
+        return hosts
 
     @property
     def is_production(self) -> bool:

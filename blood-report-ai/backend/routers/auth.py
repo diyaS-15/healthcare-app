@@ -1,160 +1,229 @@
 """
-Auth Router - User Authentication
-Sign up, login, refresh token, change password.
+Auth Router - User Authentication with Supabase
+Sign up, login, token refresh, password change, logout.
 """
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Header
 from pydantic import EmailStr
 import logging
+from typing import Optional
 
 from models.schemas import SignUpRequest, LoginRequest, AuthResponse, ChangePasswordRequest
-from utils.supabase_client import create_user, get_user
+from utils.supabase_client import get_supabase
 from config import get_settings
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-router = APIRouter()
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/signup", response_model=AuthResponse, status_code=201)
 async def signup(req: SignUpRequest):
     """
-    Register a new user.
-    In production, use Supabase Auth API instead of direct signup.
-    This is a simplified version.
+    Register a new user with Supabase Auth.
     """
     try:
-        # In production: Use Supabase client auth library
-        # auth = supabase.auth.sign_up({
-        #     "email": req.email,
-        #     "password": req.password
-        # })
+        supabase = get_supabase()
         
-        # For now, return placeholder
-        logger.info(f"Signup attempt: {req.email}")
-        
-        return {
-            "user_id": "user_123",
+        # Create user with Supabase
+        auth_response = supabase.auth.sign_up({
             "email": req.email,
-            "full_name": req.full_name,
-            "access_token": "token_placeholder",
-            "refresh_token": "refresh_placeholder",
-        }
+            "password": req.password,
+            "options": {
+                "data": {
+                    "full_name": req.full_name
+                }
+            }
+        })
+        
+        user = auth_response.user
+        session = auth_response.session
+        
+        if not user or not session:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Signup failed - unable to create user"
+            )
+        
+        logger.info(f"User signed up: {user.email}")
+        
+        return AuthResponse(
+            user_id=user.id,
+            email=user.email,
+            full_name=user.user_metadata.get("full_name", "") if user.user_metadata else "",
+            access_token=session.access_token,
+            refresh_token=session.refresh_token,
+        )
         
     except Exception as e:
-        logger.error(f"Signup error: {e}")
+        logger.error(f"Signup error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Signup failed"
+            detail=f"Signup failed: {str(e)}"
         )
 
 
 @router.post("/login", response_model=AuthResponse)
 async def login(req: LoginRequest):
     """
-    Login with email and password.
-    Returns JWT access token.
-    In production: Use Supabase Auth API
+    Login with email and password using Supabase Auth.
+    Returns access and refresh tokens.
     """
     try:
         logger.info(f"Login attempt: {req.email}")
+        supabase = get_supabase()
         
-        # In production:
-        # auth = supabase.auth.sign_in_with_password({
-        #     "email": req.email,
-        #     "password": req.password
-        # })
-        # return AuthResponse(
-        #     user_id=auth.user.id,
-        #     email=auth.user.email,
-        #     full_name=auth.user.user_metadata.get("full_name", ""),
-        #     access_token=auth.session.access_token,
-        #     refresh_token=auth.session.refresh_token,
-        # )
-        
-        return {
-            "user_id": "user_123",
+        # Sign in with Supabase
+        auth_response = supabase.auth.sign_in_with_password({
             "email": req.email,
-            "full_name": "User Name",
-            "access_token": "token_placeholder",
-            "refresh_token": "refresh_placeholder",
-        }
+            "password": req.password
+        })
+        
+        user = auth_response.user
+        session = auth_response.session
+        
+        if not user or not session:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid credentials"
+            )
+        
+        logger.info(f"User logged in: {user.email}")
+        
+        return AuthResponse(
+            user_id=user.id,
+            email=user.email,
+            full_name=user.user_metadata.get("full_name", "") if user.user_metadata else "",
+            access_token=session.access_token,
+            refresh_token=session.refresh_token,
+        )
         
     except Exception as e:
-        logger.error(f"Login error: {e}")
+        logger.error(f"Login error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials"
+            detail="Invalid email or password"
         )
 
 
 @router.post("/refresh")
 async def refresh_token(refresh_token: str):
     """
-    Refresh an expired access token.
+    Refresh an expired access token using the refresh token.
     """
     try:
-        # In production: supabase.auth.refresh_session({"refresh_token": refresh_token})
         logger.info("Token refresh requested")
+        supabase = get_supabase()
+        
+        # Refresh session with Supabase
+        auth_response = supabase.auth.refresh_session({
+            "refresh_token": refresh_token
+        })
+        
+        session = auth_response.session
+        user = auth_response.user
+        
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired refresh token"
+            )
+        
+        logger.info(f"Token refreshed for user: {user.email}")
         
         return {
-            "access_token": "new_token_placeholder",
-            "expires_in": 3600,
+            "access_token": session.access_token,
+            "refresh_token": session.refresh_token,
+            "expires_in": session.expires_in,
         }
         
     except Exception as e:
-        logger.error(f"Token refresh error: {e}")
+        logger.error(f"Token refresh error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token"
-        )
-
-
-@router.post("/change-password")
-async def change_password(
-    user_id: str,
-    req: ChangePasswordRequest
-):
-    """
-    Change user password.
-    Requires authenticated user.
-    """
-    try:
-        logger.info(f"Password change for user: {user_id}")
-        
-        # In production:
-        # supabase.auth.update_user({
-        #     "password": req.new_password
-        # })
-        
-        return {"message": "Password changed successfully"}
-        
-    except Exception as e:
-        logger.error(f"Password change error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password change failed"
+            detail="Failed to refresh token"
         )
 
 
 @router.post("/logout")
-async def logout(user_id: str):
+async def logout(authorization: Optional[str] = Header(None)):
     """
-    Logout user (invalidate token on frontend).
-    Backend doesn't store session state - tokens are stateless.
+    Logout the current user by invalidating their session.
     """
-    logger.info(f"Logout: {user_id}")
-    return {"message": "Logged out successfully"}
+    try:
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Missing or invalid authorization header"
+            )
+        
+        supabase = get_supabase()
+        
+        # Sign out with Supabase
+        supabase.auth.sign_out()
+        
+        logger.info("User logged out")
+        
+        return {"message": "Successfully logged out"}
+        
+    except Exception as e:
+        logger.error(f"Logout error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Logout failed"
+        )
+
+
+@router.post("/change-password")
+async def change_password(req: ChangePasswordRequest, authorization: Optional[str] = Header(None)):
+    """
+    Change password for the authenticated user.
+    """
+    try:
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Missing or invalid authorization header"
+            )
+        
+        access_token = authorization.replace("Bearer ", "")
+        supabase = get_supabase()
+        
+        # Update user password
+        supabase.auth.update_user(
+            {"password": req.new_password},
+            access_token
+        )
+        
+        logger.info("Password changed successfully")
+        
+        return {"message": "Password changed successfully"}
+        
+    except Exception as e:
+        logger.error(f"Password change error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to change password"
+        )
 
 
 @router.get("/me")
-async def get_current_user(user_id: str):
+async def get_current_user(authorization: Optional[str] = Header(None)):
     """
-    Get current user profile.
-    Requires valid JWT token.
+    Get current authenticated user profile.
     """
     try:
-        user = await get_user(user_id)
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Missing or invalid authorization header"
+            )
+        
+        access_token = authorization.replace("Bearer ", "")
+        supabase = get_supabase()
+        
+        # Get user from Supabase
+        user = supabase.auth.get_user(access_token)
         
         if not user:
             raise HTTPException(
@@ -162,10 +231,14 @@ async def get_current_user(user_id: str):
                 detail="User not found"
             )
         
-        return user
+        return {
+            "user_id": user.id,
+            "email": user.email,
+            "full_name": user.user_metadata.get("full_name", "") if user.user_metadata else ""
+        }
         
     except Exception as e:
-        logger.error(f"Error fetching user: {e}")
+        logger.error(f"Error fetching user: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not fetch user"

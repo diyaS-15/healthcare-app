@@ -30,7 +30,7 @@ app = FastAPI(
 
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=settings.origins_list
+    allowed_hosts=settings.allowed_hosts_list
 )
 
 app.add_middleware(
@@ -111,12 +111,3 @@ if __name__ == "__main__":
         reload=settings.is_development,
         log_level=settings.log_level.lower(),
     )
-
-# ── HEALTH ────────────────────────────────────────────────────
-@app.get("/")
-def root():
-    return {"status": "ok", "message": "Blood Report AI Backend v2.0"}
-
-@app.get("/health")
-def health():
-    return {"status": "healthy"}

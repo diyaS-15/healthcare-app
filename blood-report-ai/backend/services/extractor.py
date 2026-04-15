@@ -1,20 +1,44 @@
 """
 Blood Report Extractor
 Handles PDF and image files → extracts raw text → parses into markers.
+Works on both Windows and Linux environments.
 """
-import re, io
+import re
+import io
+import os
+import platform
 from pathlib import Path
-import fitz                       # PyMuPDF
+import fitz  # PyMuPDF
 from PIL import Image
 import pytesseract
 import openai
 import json
-import pytesseract
 
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 from config import get_settings
 
 settings = get_settings()
+
+# Conditional Tesseract path for cross-platform support
+if platform.system() == "Windows":
+    # Windows path
+    possible_paths = [
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+    ]
+    for path in possible_paths:
+        if os.path.exists(path):
+            pytesseract.pytesseract.tesseract_cmd = path
+            break
+else:
+    # Linux/Mac - assumes tesseract is in PATH
+    try:
+        # Try to find tesseract in PATH
+        import shutil
+        if shutil.which("tesseract"):
+            # tesseract is in PATH, no need to set cmd
+            pass
+    except Exception:
+        pass  # Use system's default PATH
 
 
 # ─── Text Extraction ────────────────────────────────────────
@@ -28,6 +52,7 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
         text += page.get_text()
     return text
 
+
 def extract_text_from_image(file_bytes: bytes) -> str:
     """Extract text from an image using Tesseract OCR."""
     image = Image.open(io.BytesIO(file_bytes))
@@ -35,6 +60,7 @@ def extract_text_from_image(file_bytes: bytes) -> str:
     image = image.convert("L")  # Grayscale
     text = pytesseract.image_to_string(image, config="--psm 6")
     return text
+
 
 def extract_text(file_bytes: bytes, filename: str) -> str:
     """Route to correct extractor based on file type."""
@@ -45,6 +71,7 @@ def extract_text(file_bytes: bytes, filename: str) -> str:
         return extract_text_from_image(file_bytes)
     else:
         raise ValueError(f"Unsupported file type: {ext}")
+
 
 # ─── LLM Parsing ────────────────────────────────────────────
 
@@ -74,7 +101,9 @@ Rules:
 - If date is ambiguous, use null
 """
 
+
 def parse_markers_with_llm(raw_text: str) -> dict:
+    """Parse extracted text into structured medical data using OpenAI."""
     client = openai.OpenAI(api_key=settings.openai_api_key)
 
     response = client.chat.completions.create(
@@ -89,6 +118,7 @@ def parse_markers_with_llm(raw_text: str) -> dict:
     )
 
     return json.loads(response.choices[0].message.content)
+
 
 def extract_report(file_bytes: bytes, filename: str) -> dict:
     """

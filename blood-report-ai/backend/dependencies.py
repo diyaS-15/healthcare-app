@@ -1,7 +1,7 @@
 """
 Authentication Dependencies
-JWT token validation using Supabase keys.
-Add `user: dict = Depends(get_current_user)` to any protected route.
+JWT token validation using Supabase (optional).
+Supports both authenticated and guest users.
 """
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -9,19 +9,32 @@ from jose import JWTError, jwt
 from typing import Optional
 from config import get_settings
 import logging
+import uuid
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
-bearer = HTTPBearer()
+bearer = HTTPBearer(auto_error=False)  # Don't fail if no auth provided
 
 
 async def get_current_user(
-    creds: HTTPAuthorizationCredentials = Depends(bearer)
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer)
 ) -> dict:
     """
     Validate JWT token and return user info.
-    Token is signed by Supabase and contains user_id, email, etc.
+    If no token provided, returns a guest user.
+    Allows both authenticated and guest access.
     """
+    # If no credentials provided, create a guest user
+    if not creds:
+        guest_id = str(uuid.uuid4())
+        return {
+            "user_id": guest_id,
+            "email": f"guest-{guest_id[:8]}@guest.local",
+            "is_guest": True,
+            "raw_token": None,
+            "payload": {}
+        }
+    
     token = creds.credentials
     
     try:
@@ -46,6 +59,7 @@ async def get_current_user(
         return {
             "user_id": user_id,
             "email": email,
+            "is_guest": False,
             "raw_token": token,
             "payload": payload
         }

@@ -17,7 +17,7 @@ def _derive_key(user_id: str) -> bytes:
         algorithm=hashes.SHA256(),
         length=32,
         salt=user_id.encode(),
-        iterations=100_000,
+        iterations=600_000,  # Increased from 100k for better security
     )
     master_key = bytes.fromhex(settings.encryption_secret)
     return kdf.derive(master_key)

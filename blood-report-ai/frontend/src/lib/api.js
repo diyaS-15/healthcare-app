@@ -1,6 +1,6 @@
 /**
  * API Client for Blood Report AI Backend
- * All requests include JWT token in Authorization header
+ * Guest-friendly - works without authentication
  */
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
@@ -14,16 +14,20 @@ class APIClient {
     const url = `${this.baseURL}${endpoint}`
     
     try {
-      const { getSession } = await import('./supabase.js').then(m => ({ getSession: m.auth.getSession }))
-      const session = await getSession()
-      
       const headers = {
         'Content-Type': 'application/json',
         ...options.headers
       }
 
-      if (session?.access_token) {
-        headers.Authorization = `Bearer ${session.access_token}`
+      // Authorization header is now optional (guest access)
+      try {
+        const { auth } = await import('./supabase.js')
+        const session = await auth.getSession()
+        if (session?.access_token) {
+          headers.Authorization = `Bearer ${session.access_token}`
+        }
+      } catch (e) {
+        // No auth available, proceed as guest
       }
 
       const response = await fetch(url, {
@@ -33,7 +37,7 @@ class APIClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({}))
-        throw new Error(error.error || `API Error: ${response.status}`)
+        throw new Error(error.error || error.detail || `API Error: ${response.status}`)
       }
 
       return await response.json()
@@ -43,37 +47,23 @@ class APIClient {
     }
   }
 
-  // ━━━━━━━━━ AUTH ━━━━━━━━━
-  async signup(email, password, fullName) {
-    return this.request('/auth/signup', {
-      method: 'POST',
-      body: JSON.stringify({ email, password, full_name: fullName })
-    })
-  }
-
-  async login(email, password) {
-    return this.request('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password })
-    })
-  }
-
-  async getCurrentUser() {
-    return this.request('/auth/me', { method: 'GET' })
-  }
-
   // ━━━━━━━━━ REPORTS ━━━━━━━━━
   async uploadReport(file, reportDate) {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('report_date', reportDate)
 
-    const { getSession } = await import('./supabase.js').then(m => ({ getSession: m.auth.getSession }))
-    const session = await getSession()
-
     const headers = {}
-    if (session?.access_token) {
-      headers.Authorization = `Bearer ${session.access_token}`
+    
+    // Try to add auth token if available
+    try {
+      const { auth } = await import('./supabase.js')
+      const session = await auth.getSession()
+      if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`
+      }
+    } catch (e) {
+      // No auth, proceed as guest
     }
 
     const response = await fetch(`${this.baseURL}/reports/upload`, {
