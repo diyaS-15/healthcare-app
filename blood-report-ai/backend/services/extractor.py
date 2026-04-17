@@ -2,68 +2,108 @@
 Blood Report Extractor
 Handles PDF and image files → extracts raw text → parses into markers.
 Works on both Windows and Linux environments.
+Optimized for blood test documents with advanced OCR preprocessing.
 """
+"""
+Production-Grade Blood Report Extractor
+Robust OCR + LLM + Fallback Parsing + Validation
+"""
+
 import re
 import io
 import os
 import platform
 from pathlib import Path
 import fitz  # PyMuPDF
-from PIL import Image
+from PIL import Image, ImageEnhance, ImageFilter
 import pytesseract
 import openai
 import json
+import shutil
 
 from config import get_settings
 
 settings = get_settings()
 
-# Conditional Tesseract path for cross-platform support
+# ─────────────────────────────────────────
+# Tesseract Setup
+# ─────────────────────────────────────────
 if platform.system() == "Windows":
-    # Windows path
-    possible_paths = [
+    for path in [
         r"C:\Program Files\Tesseract-OCR\tesseract.exe",
         r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
-    ]
-    for path in possible_paths:
+    ]:
         if os.path.exists(path):
             pytesseract.pytesseract.tesseract_cmd = path
             break
-else:
-    # Linux/Mac - assumes tesseract is in PATH
-    try:
-        # Try to find tesseract in PATH
-        import shutil
-        if shutil.which("tesseract"):
-            # tesseract is in PATH, no need to set cmd
-            pass
-    except Exception:
-        pass  # Use system's default PATH
+
+# ─────────────────────────────────────────
+# Image Preprocessing
+# ─────────────────────────────────────────
+def preprocess_image_for_ocr(image: Image.Image) -> Image.Image:
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+
+    if image.width < 800:
+        scale = 800 / image.width
+        image = image.resize(
+            (int(image.width * scale), int(image.height * scale)),
+            Image.Resampling.LANCZOS,
+        )
+
+    image = image.convert("L")
+
+    image = ImageEnhance.Contrast(image).enhance(2.2)
+    image = ImageEnhance.Brightness(image).enhance(1.1)
+    image = image.filter(ImageFilter.MedianFilter(size=3))
+    image = ImageEnhance.Sharpness(image).enhance(2.0)
+
+    return image
 
 
-# ─── Text Extraction ────────────────────────────────────────
+# ─────────────────────────────────────────
+# OCR Helpers
+# ─────────────────────────────────────────
+def is_text_valid(text: str) -> bool:
+    if len(text.strip()) < 80:
+        return False
+    alpha_ratio = sum(c.isalpha() for c in text) / max(len(text), 1)
+    return alpha_ratio > 0.5
 
 
+def ocr_image(image: Image.Image) -> str:
+    config = "--psm 6 --oem 3 -c preserve_interword_spaces=1"
+    return pytesseract.image_to_string(image, config=config)
+
+
+# ─────────────────────────────────────────
+# Text Extraction
+# ─────────────────────────────────────────
 def extract_text_from_pdf(file_bytes: bytes) -> str:
-    """Extract all text from a PDF file."""
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     text = ""
-    for page in doc:
-        text += page.get_text()
+
+    for i, page in enumerate(doc):
+        page_text = page.get_text()
+
+        if not is_text_valid(page_text):
+            pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            img = preprocess_image_for_ocr(img)
+            page_text = ocr_image(img)
+
+        text += f"\n--- Page {i+1} ---\n{page_text}"
+
     return text
 
 
 def extract_text_from_image(file_bytes: bytes) -> str:
-    """Extract text from an image using Tesseract OCR."""
     image = Image.open(io.BytesIO(file_bytes))
-    # Improve OCR accuracy with preprocessing
-    image = image.convert("L")  # Grayscale
-    text = pytesseract.image_to_string(image, config="--psm 6")
-    return text
+    image = preprocess_image_for_ocr(image)
+    return ocr_image(image)
 
 
 def extract_text(file_bytes: bytes, filename: str) -> str:
-    """Route to correct extractor based on file type."""
     ext = Path(filename).suffix.lower()
     if ext == ".pdf":
         return extract_text_from_pdf(file_bytes)
@@ -73,60 +113,198 @@ def extract_text(file_bytes: bytes, filename: str) -> str:
         raise ValueError(f"Unsupported file type: {ext}")
 
 
-# ─── LLM Parsing ────────────────────────────────────────────
+# ─────────────────────────────────────────
+# Cleaning
+# ─────────────────────────────────────────
+def clean_text(text: str) -> str:
+    text = re.sub(r"[ ]+", " ", text)
+    text = re.sub(r"\n+", "\n", text)
 
+    fixes = {
+        "0O": "OO",
+        "l0": "10",
+        "rn": "m",
+    }
+    for k, v in fixes.items():
+        text = text.replace(k, v)
+
+    return text.strip()
+
+
+# ─────────────────────────────────────────
+# Chunking
+# ─────────────────────────────────────────
+def chunk_text(text: str, size=4000):
+    return [text[i:i + size] for i in range(0, len(text), size)]
+
+
+# ─────────────────────────────────────────
+# LLM Prompt
+# ─────────────────────────────────────────
 EXTRACTION_PROMPT = """
-You are a medical data parser. Extract all blood test markers from this lab report text.
+You are an expert medical data parser.
 
-Return ONLY a JSON object (no markdown, no explanation) with this exact structure:
+Extract ALL blood test markers from lab reports.
+
+Return ONLY JSON:
 {
-  "report_date": "YYYY-MM-DD or null if not found",
-  "lab_name": "lab name or null",
+  "report_date": "YYYY-MM-DD or null",
+  "lab_name": "string or null",
+  "patient_name": "string or null",
   "markers": [
     {
-      "name": "original name as shown in report",
-      "value": 12.5,
-      "unit": "g/dL",
-      "reference_low": 11.5,
-      "reference_high": 16.5
+      "name": "string",
+      "value": number,
+      "unit": "string",
+      "reference_low": number or null,
+      "reference_high": number or null,
+      "confidence": number (0-1)
     }
   ]
 }
 
 Rules:
-- Extract every marker with a numeric value
-- Include reference ranges if shown
-- Use null for missing reference values
-- Convert all values to numbers (not strings)
-- If date is ambiguous, use null
+- Extract ALL markers with numbers
+- Reports are often tables
+- Use null if missing
+- Do not hallucinate values
 """
 
 
-def parse_markers_with_llm(raw_text: str) -> dict:
-    """Parse extracted text into structured medical data using OpenAI."""
+# ─────────────────────────────────────────
+# LLM Parsing (Chunked)
+# ─────────────────────────────────────────
+def parse_with_llm(text: str):
     client = openai.OpenAI(api_key=settings.openai_api_key)
+    chunks = chunk_text(text)
 
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": EXTRACTION_PROMPT},
-            {"role": "user", "content": f"Extract markers:\n\n{raw_text[:8000]}"}
-        ],
-        temperature=0,
-        max_tokens=2000,
-        response_format={"type": "json_object"}
+    all_markers = []
+    meta = {}
+
+    for chunk in chunks:
+        res = client.chat.completions.create(
+            model="gpt-5",
+            temperature=0,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": EXTRACTION_PROMPT},
+                {"role": "user", "content": chunk},
+            ],
+        )
+
+        data = json.loads(res.choices[0].message.content)
+
+        all_markers.extend(data.get("markers", []))
+
+        for key in ["report_date", "lab_name", "patient_name"]:
+            if data.get(key) and not meta.get(key):
+                meta[key] = data[key]
+
+    meta["markers"] = all_markers
+    return meta
+
+
+# ─────────────────────────────────────────
+# Regex Fallback
+# ─────────────────────────────────────────
+def regex_fallback(text: str):
+    pattern = re.findall(
+        r"([A-Za-z ]+)\s+([\d.]+)\s*([a-zA-Z/%]+)?\s*\(?([\d.]*)-?([\d.]*)\)?",
+        text,
     )
 
-    return json.loads(response.choices[0].message.content)
+    markers = []
+
+    for name, val, unit, low, high in pattern:
+        try:
+            markers.append({
+                "name": name.strip(),
+                "value": float(val),
+                "unit": unit or "",
+                "reference_low": float(low) if low else None,
+                "reference_high": float(high) if high else None,
+                "confidence": 0.6,
+            })
+        except:
+            continue
+
+    return markers
 
 
-def extract_report(file_bytes: bytes, filename: str) -> dict:
-    """
-    Full pipeline: file → text → structured JSON.
-    Returns dict with report_date, lab_name, markers list.
-    """
-    raw_text = extract_text(file_bytes, filename)
-    if len(raw_text.strip()) < 50:
-        raise ValueError("Could not extract enough text from this file. Try a clearer image.")
-    parsed = parse_markers_with_llm(raw_text)
-    return parsed
+# ─────────────────────────────────────────
+# Deduplication
+# ─────────────────────────────────────────
+def normalize(name):
+    return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
+def deduplicate(markers):
+    seen = {}
+    for m in markers:
+        key = normalize(m["name"])
+        if key not in seen or m["confidence"] > seen[key]["confidence"]:
+            seen[key] = m
+    return list(seen.values())
+
+
+# ─────────────────────────────────────────
+# Status Calculation
+# ─────────────────────────────────────────
+def compute_status(marker):
+    val = marker["value"]
+    low = marker.get("reference_low")
+    high = marker.get("reference_high")
+
+    if low is None or high is None:
+        return "unknown"
+
+    if val < low:
+        return "low"
+    elif val > high:
+        return "high"
+    return "normal"
+
+
+# ─────────────────────────────────────────
+# Main Pipeline
+# ─────────────────────────────────────────
+def extract_report(file_bytes: bytes, filename: str):
+    text = extract_text(file_bytes, filename)
+    text = clean_text(text)
+
+    if len(text) < 50:
+        raise ValueError("Not enough text extracted")
+
+    # LLM
+    parsed = parse_with_llm(text)
+
+    # Fallback
+    fallback = regex_fallback(text)
+
+    markers = parsed.get("markers", []) + fallback
+
+    # Deduplicate
+    markers = deduplicate(markers)
+
+    # Validate + enrich
+    final = []
+    for m in markers:
+        try:
+            m["value"] = float(m["value"])
+            m["status"] = compute_status(m)
+
+            if m.get("confidence", 0.6) >= 0.5:
+                final.append(m)
+        except:
+            continue
+
+    if not final:
+        raise ValueError("No valid markers found")
+
+    return {
+        "report_date": parsed.get("report_date"),
+        "lab_name": parsed.get("lab_name"),
+        "patient_name": parsed.get("patient_name"),
+        "markers": final,
+        "count": len(final),
+    }

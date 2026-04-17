@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     supabase_service_key: str
     supabase_anon_key: str
     supabase_jwt_secret: str  # For JWT verification
+    
 
     # ── OpenAI ────────────────────────────────────────────────
     openai_api_key: str
@@ -41,8 +42,12 @@ class Settings(BaseSettings):
     # ── Database ──────────────────────────────────────────────
     db_max_connections: int = 5
 
+    # ── Redis ────────────────────────────────────────────────
+    redis_url: str = "redis://localhost:6379/0"
+
     # ── Logging ───────────────────────────────────────────────
     log_level: str = "INFO"
+
 
     class Config:
         env_file = ".env"

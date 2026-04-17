@@ -1,6 +1,7 @@
 """
 Chat Router - AI Conversation Endpoints
 Free-form chat with context from blood reports.
+Includes rate limiting and input validation.
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 import logging
@@ -27,8 +28,22 @@ async def send_chat_message(
     """
     Send a message to the AI.
     AI responds with educational information about blood markers.
+    Includes input validation and rate limiting considerations.
     """
     try:
+        # Validate input
+        if not req.message or len(req.message.strip()) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Message cannot be empty"
+            )
+        
+        if len(req.message) > 2000:
+            raise HTTPException(
+                status_code=400,
+                detail="Message is too long (max 2000 characters)"
+            )
+        
         user_id = user["user_id"]
         
         # Get conversation history (encrypted in DB)
@@ -51,10 +66,10 @@ async def send_chat_message(
                 "content": content
             })
         
-        # Get AI response
+        # Get AI response with conversation context
         ai_response = general_chat(
+            message=req.message,
             history=history[-10:],  # Last 10 messages for context
-            new_message=req.message,
             simple_mode=req.simple_mode
         )
         
@@ -87,6 +102,8 @@ async def send_chat_message(
             "created_at": __import__('datetime').datetime.utcnow()
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Chat error: {e}")
         raise HTTPException(

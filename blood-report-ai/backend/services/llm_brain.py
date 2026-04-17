@@ -107,10 +107,17 @@ def _fallback_explain_report(markers: list) -> str:
     return "Findings:\n- " + "\n- ".join(abnormal)
 
 
-def general_chat(message: str, context: str = "") -> str:
+def general_chat(message: str, context: str = "", history: list = None, simple_mode: bool = False) -> str:
     """
     Handle general health questions using GPT-4.
+    Supports conversation history for context-aware responses.
     CRITICAL: This is NOT a diagnostic or medical advice tool.
+    
+    Args:
+        message: Current user message
+        context: Optional context about user's markers
+        history: Optional list of message dicts with 'role' and 'content' keys
+        simple_mode: Whether to simplify response for lay understanding
     """
     system_prompt = """You are an EDUCATIONAL health information assistant. CRITICAL RULES:
     1. NEVER diagnose diseases or medical conditions
@@ -127,14 +134,25 @@ def general_chat(message: str, context: str = "") -> str:
     if context:
         system_prompt += f"\n\nGeneral context about the user's markers: {context}"
     
+    if simple_mode:
+        system_prompt += "\n\nPlease use simple, everyday language that a non-medical person can understand."
+    
     try:
         client = _get_client()
+        
+        # Build messages list with history
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        if history:
+            # Add conversation history (limited to last 10 messages for context)
+            messages.extend(history[-10:])
+        
+        # Add current message
+        messages.append({"role": "user", "content": message})
+        
         response = client.chat.completions.create(
             model="gpt-4-turbo",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": message}
-            ],
+            messages=messages,
             temperature=0.7,
             max_tokens=1000
         )
