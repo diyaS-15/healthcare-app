@@ -107,18 +107,18 @@ def _fallback_explain_report(markers: list) -> str:
     return "Findings:\n- " + "\n- ".join(abnormal)
 
 
-def general_chat(message: str, context: str = "", history: list = None, simple_mode: bool = False) -> str:
+def general_chat(history: list = None, new_message: str = "", simple_mode: bool = False, message: str = "", context: str = "") -> str:
     """
     Handle general health questions using GPT-4.
-    Supports conversation history for context-aware responses.
+    Accepts both the new (history/new_message) and old (message/context) call styles.
     CRITICAL: This is NOT a diagnostic or medical advice tool.
-    
-    Args:
-        message: Current user message
-        context: Optional context about user's markers
-        history: Optional list of message dicts with 'role' and 'content' keys
-        simple_mode: Whether to simplify response for lay understanding
     """
+    # Support legacy call style
+    if not new_message and message:
+        new_message = message
+    if history is None:
+        history = []
+
     system_prompt = """You are an EDUCATIONAL health information assistant. CRITICAL RULES:
     1. NEVER diagnose diseases or medical conditions
     2. NEVER prescribe treatments or medications
@@ -127,29 +127,29 @@ def general_chat(message: str, context: str = "", history: list = None, simple_m
     5. Provide ONLY general, educational information
     6. If someone describes symptoms, NEVER suggest causes or diagnosis
     7. Include medical disclaimer in responses about health concerns
-    
+
     You can explain what blood markers mean generally, but NEVER diagnose based on them.
     Always be helpful but firm about this being educational only."""
-    
+
+    if simple_mode:
+        system_prompt += "\n\nIMPORTANT: Use very simple, everyday language. Avoid medical jargon. Explain like you're talking to a teenager."
+
     if context:
         system_prompt += f"\n\nGeneral context about the user's markers: {context}"
-    
-    if simple_mode:
-        system_prompt += "\n\nPlease use simple, everyday language that a non-medical person can understand."
-    
+
+    # Build messages array with full conversation history
+    messages = [{"role": "system", "content": system_prompt}]
+
+    for h in history:
+        role = h.get("role", "user")
+        content = h.get("content", "")
+        if role in ("user", "assistant") and content:
+            messages.append({"role": role, "content": content})
+
+    messages.append({"role": "user", "content": new_message})
+
     try:
         client = _get_client()
-        
-        # Build messages list with history
-        messages = [{"role": "system", "content": system_prompt}]
-        
-        if history:
-            # Add conversation history (limited to last 10 messages for context)
-            messages.extend(history[-10:])
-        
-        # Add current message
-        messages.append({"role": "user", "content": message})
-        
         response = client.chat.completions.create(
             model="gpt-4-turbo",
             messages=messages,
@@ -157,15 +157,14 @@ def general_chat(message: str, context: str = "", history: list = None, simple_m
             max_tokens=1000
         )
         result = response.choices[0].message.content
-        
+
         # Always include disclaimer for health-related queries
-        if any(keyword in message.lower() for keyword in ["health", "symptom", "disease", "condition", "sick", "ill"]):
+        if any(keyword in new_message.lower() for keyword in ["health", "symptom", "disease", "condition", "sick", "ill"]):
             result += "\n\n" + MEDICAL_DISCLAIMER
-        
+
         return result
     except Exception as e:
         return f"I encountered an error processing your question: {str(e)}. Please consult a healthcare provider for medical concerns."
-
 
 def follow_up_response(original_analysis: str, user_answer: str) -> str:
     """Handle follow-up questions about the analysis using GPT-4."""
@@ -195,28 +194,61 @@ def follow_up_response(original_analysis: str, user_answer: str) -> str:
         return f"I'd be happy to help with that follow-up question, but I'm having technical difficulties. Please try again."
 
 
-def explain_simple(text: str) -> str:
-    """Simplify complex medical terminology in text."""
-    prompt = f"""Simplify this medical text for a patient to understand. Use clear, everyday language.
-    Keep it concise but complete.
-    
-    Text: {text}"""
-    
+def explain_report(report: dict = None, markers: list = None, trends: dict = None, patterns: list = None, simple_mode: bool = False) -> str:
+    """
+    Generate educational explanation of blood markers.
+    Accepts both old (report dict) and new (markers/trends/patterns) call styles.
+    """
+    # Support old call style: explain_report(report={...})
+    if report and not markers:
+        markers = report.get("markers", [])
+
+    if not markers:
+        return "No markers found in report for analysis."
+
+    marker_text = "\n".join([
+        f"- {m.get('name', 'Unknown')}: {m.get('value')} {m.get('unit', '')} "
+        f"(ref: {m.get('reference_low') or m.get('reference_min', 'N/A')}-{m.get('reference_high') or m.get('reference_max', 'N/A')}) "
+        f"[{m.get('status', 'unknown')}]"
+        for m in markers
+    ])
+
+    simplify_instruction = "Use very simple, everyday language — explain like talking to a teenager." if simple_mode else "Use clear but medically accurate language."
+
+    prompt = f"""
+    You are an EDUCATIONAL health information assistant. You are NOT a doctor and cannot diagnose.
+    {simplify_instruction}
+
+    CRITICAL RULES:
+    1. NEVER diagnose or suggest medical conditions
+    2. NEVER prescribe treatments or medications
+    3. ALWAYS recommend consulting a healthcare provider
+    4. Provide ONLY educational information about markers
+
+    Markers:
+    {marker_text}
+
+    Please provide:
+    1. What each abnormal value MIGHT indicate (educationally)
+    2. General information about what causes values to be outside normal ranges
+    3. Lifestyle factors that can support healthy marker levels
+    4. Why consulting a healthcare provider is important
+    """
+
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4-turbo",
             messages=[
-                {"role": "system", "content": "You simplify medical terminology into everyday language for patients."},
+                {"role": "system", "content": "You are an EDUCATIONAL health assistant. You CANNOT diagnose diseases. Always include the medical disclaimer."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.5,
-            max_tokens=500
+            temperature=0.7,
+            max_tokens=1500
         )
-        return response.choices[0].message.content
-    except Exception:
-        return text  # Return original if simplification fails
-
+        return response.choices[0].message.content + "\n\n" + MEDICAL_DISCLAIMER
+    except Exception as e:
+        return _fallback_explain_report(markers) + "\n\n" + MEDICAL_DISCLAIMER
 
 def extract_questions_from_response(text: str) -> list:
     """Extract clarifying questions from AI-generated analysis for follow-up."""

@@ -9,9 +9,8 @@ import uuid
 
 from dependencies import get_current_user
 from models.schemas import ChatMessageRequest, ChatMessageResponse, ChatMessage
-from services.llm_brain import general_chat, explain_report, extract_questions_from_response
-from services.encryption import encrypt_data, decrypt_data
-from utils.supabase_client import save_chat_message, get_conversation_history, get_report_markers
+from services.llm_brain import general_chat, explain_report
+from utils.supabase_client import save_chat_message, get_conversation_history
 from config import get_settings
 
 logger = logging.getLogger(__name__)
