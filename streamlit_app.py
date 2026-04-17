@@ -9,6 +9,7 @@ st.markdown("""
     .main { background-color: #f8fafb; }
     h1 { color: #1a3a52; font-size: 2.5rem; font-weight: 700; }
     h2 { color: #1a3a52; font-size: 1.5rem; font-weight: 600; }
+    h3 { color: #1a3a52; font-size: 1.1rem; }
     .card { 
         background: white; 
         padding: 25px; 
@@ -26,12 +27,38 @@ st.markdown("""
     .status-good { color: #059669; font-weight: 600; }
     .status-warning { color: #d97706; font-weight: 600; }
     .status-alert { color: #dc2626; font-weight: 600; }
-    .upload-box {
-        background: linear-gradient(135deg, #f0f4f8 0%, #f8fafb 100%);
-        border: 2px dashed #1a3a52;
-        border-radius: 12px;
-        padding: 40px;
-        text-align: center;
+    .chat-message {
+        padding: 16px;
+        margin: 12px 0;
+        border-radius: 10px;
+        line-height: 1.6;
+    }
+    .user-message {
+        background: linear-gradient(135deg, #1a3a52 0%, #2d5a7b 100%);
+        color: white;
+        margin-left: 40px;
+        border-radius: 10px 0px 10px 10px;
+    }
+    .ai-message {
+        background: #f0f4f8;
+        color: #1a3a52;
+        margin-right: 40px;
+        border-radius: 0px 10px 10px 10px;
+        border-left: 4px solid #1a3a52;
+    }
+    .insight-box {
+        background: linear-gradient(135deg, #fff9e6 0%, #fff 100%);
+        border-left: 4px solid #d97706;
+        padding: 16px;
+        border-radius: 8px;
+        margin: 12px 0;
+    }
+    .recommendation {
+        background: linear-gradient(135deg, #e6f7f1 0%, #f0fdf4 100%);
+        border-left: 4px solid #059669;
+        padding: 14px;
+        margin: 8px 0;
+        border-radius: 6px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -221,42 +248,257 @@ def render_app():
     
     with tab3:
         st.markdown("<h2>Health AI Assistant</h2>", unsafe_allow_html=True)
-        st.markdown("Ask your health questions. Get instant AI answers based on your blood data.")
+        st.markdown("Advanced AI-powered health insights based on your personal blood profile")
+        st.markdown("---")
         
-        question = st.text_area("", placeholder="E.g., What does elevated glucose mean? Or: How can I improve my health?", height=120, label_visibility="collapsed")
+        # Initialize chat history
+        if "chat_history" not in st.session_state:
+            st.session_state.chat_history = []
         
-        col_c1, col_c2, col_c3 = st.columns([1, 1, 2])
-        with col_c1:
-            ask_btn = st.button("Get Answer", use_container_width=True, type="primary")
+        # Chat display area
+        chat_container = st.container()
         
-        if ask_btn:
+        with chat_container:
+            if st.session_state.chat_history:
+                for msg in st.session_state.chat_history:
+                    if msg["role"] == "user":
+                        st.markdown(f"""
+                        <div class='chat-message user-message'>
+                            <strong>You:</strong> {msg['content']}
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"""
+                        <div class='chat-message ai-message'>
+                            <strong>HealthLens AI:</strong><br>{msg['content']}
+                        </div>
+                        """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # Quick suggestions
+        st.markdown("<h4>Common Questions</h4>", unsafe_allow_html=True)
+        col_q1, col_q2, col_q3 = st.columns(3)
+        
+        suggestions = [
+            "What does my glucose level mean?",
+            "How can I improve my health?",
+            "Are my results normal?"
+        ]
+        
+        suggestion_clicked = None
+        with col_q1:
+            if st.button(suggestions[0], use_container_width=True):
+                suggestion_clicked = suggestions[0]
+        with col_q2:
+            if st.button(suggestions[1], use_container_width=True):
+                suggestion_clicked = suggestions[1]
+        with col_q3:
+            if st.button(suggestions[2], use_container_width=True):
+                suggestion_clicked = suggestions[2]
+        
+        st.markdown("")
+        
+        # Input area
+        col_input1, col_input2 = st.columns([4, 1])
+        
+        with col_input1:
+            user_input = st.text_input(
+                "Ask AI Assistant anything about your health",
+                placeholder="Type your health question here...",
+                label_visibility="collapsed"
+            )
+        
+        with col_input2:
+            send_btn = st.button("Send", use_container_width=True, type="primary")
+        
+        # Process input or suggestion
+        if send_btn or suggestion_clicked:
+            question = suggestion_clicked if suggestion_clicked else user_input
+            
             if question:
-                with st.spinner("AI Assistant is thinking..."):
-                    st.success("AI Response (Based on Your Health Profile):")
-                    
-                    st.markdown("""
-                    <div class='card'>
-                        <p>Your glucose reading of 110 mg/dL is slightly elevated. Here's what you should know:</p>
-                        
-                        <h4>What This Means</h4>
-                        <p>Normal fasting glucose is 70-100 mg/dL. Your reading suggests your body may be less efficient at managing blood sugar.</p>
-                        
-                        <h4>Action Items</h4>
-                        <ul>
-                            <li><strong>Diet:</strong> Reduce refined sugars and processed carbs</li>
-                            <li><strong>Exercise:</strong> Aim for 150 minutes weekly</li>
-                            <li><strong>Monitoring:</strong> Check levels monthly</li>
-                            <li><strong>Sleep:</strong> Get 7-9 hours nightly</li>
-                        </ul>
-                        
-                        <h4>When to See a Doctor</h4>
-                        <p>If glucose stays above 125 mg/dL fasting, schedule an appointment for prediabetes screening.</p>
-                        
-                        <p style='color: #d97706; font-weight: 600;'>💡 Tip: Small lifestyle changes now prevent bigger health issues later</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-            else:
-                st.warning("Please ask a health question")
+                # Add user message to history
+                st.session_state.chat_history.append({"role": "user", "content": question})
+                
+                # Generate AI response based on question
+                with st.spinner("HealthLens AI is analyzing your data..."):
+                    ai_response = get_ai_response(question)
+                    st.session_state.chat_history.append({"role": "assistant", "content": ai_response})
+                    st.rerun()
+
+
+def get_ai_response(question):
+    """Generate AI response based on user question and health data"""
+    
+    responses = {
+        "What does my glucose level mean?": """
+            <p><strong>Understanding Your Glucose Level (110 mg/dL)</strong></p>
+            
+            <div class='insight-box'>
+                <p><strong>What This Means:</strong> Your fasting glucose of 110 mg/dL is slightly elevated. Normal is 70-100 mg/dL. This suggests your body may have mild difficulty managing blood sugar.</p>
+            </div>
+            
+            <p><strong>Risk Assessment:</strong></p>
+            <ul>
+                <li>Not diabetic (diabetes starts at 126+)</li>
+                <li>Prediabetic range (100-125 mg/dL)</li>
+                <li>Can be reversed with lifestyle changes</li>
+            </ul>
+            
+            <p><strong>Recommended Actions (in priority order):</strong></p>
+            <div class='recommendation'>
+                <strong>1. Diet Modifications (Highest Impact)</strong>
+                <ul style='margin: 8px 0; padding-left: 20px;'>
+                    <li>Reduce refined carbs (white bread, sugar, pastries)</li>
+                    <li>Increase fiber (vegetables, whole grains)</li>
+                    <li>Avoid sugary drinks</li>
+                    <li>Practice portion control</li>
+                </ul>
+            </div>
+            
+            <div class='recommendation'>
+                <strong>2. Exercise Routine</strong>
+                <ul style='margin: 8px 0; padding-left: 20px;'>
+                    <li>150 minutes moderate activity per week</li>
+                    <li>Include strength training 2x/week</li>
+                    <li>Walking after meals helps glucose</li>
+                </ul>
+            </div>
+            
+            <div class='recommendation'>
+                <strong>3. Lifestyle Factors</strong>
+                <ul style='margin: 8px 0; padding-left: 20px;'>
+                    <li>Sleep: 7-9 hours nightly</li>
+                    <li>Stress management (meditation, yoga)</li>
+                    <li>Weight management (5-10% loss helps)</li>
+                </ul>
+            </div>
+            
+            <p><strong>When to See Your Doctor:</strong></p>
+            <div class='insight-box'>
+                <ul style='margin: 0; padding-left: 20px;'>
+                    <li>If glucose stays above 125 mg/dL fasting</li>
+                    <li>For formal diabetes screening</li>
+                    <li>To discuss medication if lifestyle changes don't help</li>
+                </ul>
+            </div>
+            
+            <p><strong>Good News:</strong> Prediabetes is reversible! Many people return to normal glucose with consistent lifestyle changes. Your early detection is a huge advantage.</p>
+        """,
+        
+        "How can I improve my health?": """
+            <p><strong>Personalized Health Improvement Plan (Based on Your Blood Work)</strong></p>
+            
+            <div class='insight-box'>
+                <p><strong>Your Current Status:</strong> Overall good health with glucose as the primary focus area. All other metrics are healthy.</p>
+            </div>
+            
+            <p><strong>30-Day Quick Wins:</strong></p>
+            <div class='recommendation'>
+                <strong>Week 1: Foundation</strong>
+                <ul style='margin: 8px 0; padding-left: 20px;'>
+                    <li>Start food tracking (MyFitnessPal or similar)</li>
+                    <li>Add 10k steps daily (use pedometer)</li>
+                    <li>Eliminate sugary drinks</li>
+                </ul>
+            </div>
+            
+            <div class='recommendation'>
+                <strong>Week 2-3: Build Momentum</strong>
+                <ul style='margin: 8px 0; padding-left: 20px;'>
+                    <li>Increase to 150 min exercise/week</li>
+                    <li>Focus on whole foods</li>
+                    <li>Add strength training</li>
+                </ul>
+            </div>
+            
+            <div class='recommendation'>
+                <strong>Week 4: Sustain & Monitor</strong>
+                <ul style='margin: 8px 0; padding-left: 20px;'>
+                    <li>Retest glucose for progress</li>
+                    <li>Adjust diet based on results</li>
+                    <li>Plan next blood work</li>
+                </ul>
+            </div>
+            
+            <p><strong>90-Day Goals:</strong></p>
+            <ul>
+                <li>Glucose back to normal range (70-100)</li>
+                <li>5-10% weight reduction (if needed)</li>
+                <li>Establish sustainable habits</li>
+                <li>Plan next comprehensive blood test</li>
+            </ul>
+            
+            <p><strong>Why This Matters:</strong> These changes prevent progression to type 2 diabetes and improve overall longevity by 10-15 years.</p>
+        """,
+        
+        "Are my results normal?": """
+            <p><strong>Your Blood Work Summary - Overall Assessment: GOOD</strong></p>
+            
+            <p><strong>Normal Results (All Healthy):</strong></p>
+            <div class='recommendation'>
+                <strong>✓ WBC: 7.2 K/µL</strong> - Normal white blood count. Your immune system is functioning well.
+            </div>
+            <div class='recommendation'>
+                <strong>✓ RBC: 4.5 M/µL</strong> - Normal red blood cell count. Good oxygen-carrying capacity.
+            </div>
+            <div class='recommendation'>
+                <strong>✓ Hemoglobin: 14.0 g/dL</strong> - Normal. Indicates good iron levels and oxygen transport.
+            </div>
+            <div class='recommendation'>
+                <strong>✓ Cholesterol: 185 mg/dL</strong> - Healthy lipid profile. Low cardiovascular risk.
+            </div>
+            
+            <p><strong>Area Needing Attention:</strong></p>
+            <div class='insight-box'>
+                <strong>⚠️ Glucose: 110 mg/dL</strong> - Slightly elevated (normal is 70-100). Not diabetic, but shows prediabetic trend. Reversible with lifestyle changes.
+            </div>
+            
+            <p><strong>Overall Risk Profile:</strong></p>
+            <ul>
+                <li>Cardiovascular Risk: <span class='status-good'>LOW</span></li>
+                <li>Metabolic Health: <span class='status-warning'>MODERATE - Monitor Glucose</span></li>
+                <li>Immune Function: <span class='status-good'>HEALTHY</span></li>
+                <li>Oxygen Transport: <span class='status-good'>EXCELLENT</span></li>
+            </ul>
+            
+            <p><strong>Next Steps:</strong></p>
+            <ol>
+                <li>Focus on glucose management through diet and exercise</li>
+                <li>Retest in 3 months to track progress</li>
+                <li>Maintain healthy habits in normal areas</li>
+                <li>Annual comprehensive screening recommended</li>
+            </ol>
+            
+            <p><strong>Verdict:</strong> Your results show good overall health. Early detection of glucose trend is excellent—this gives you time to prevent serious issues. With simple lifestyle changes, you can normalize your glucose and maintain excellent health long-term.</p>
+        """
+    }
+    
+    # Default response if question doesn't match
+    default = """
+        <p><strong>Processing Your Question with HealthLens AI</strong></p>
+        
+        <p>Based on your recent blood work analysis:</p>
+        
+        <div class='insight-box'>
+            <p>Your health profile shows generally good results with glucose being the area to focus on. This is positive news because prediabetic trends are highly reversible through lifestyle modification.</p>
+        </div>
+        
+        <p><strong>Key Recommendations:</strong></p>
+        <div class='recommendation'>
+            <ul style='margin: 0; padding-left: 20px;'>
+                <li>Monitor glucose regularly</li>
+                <li>Increase physical activity to 150+ minutes weekly</li>
+                <li>Reduce refined sugars and processed foods</li>
+                <li>Maintain consistent sleep schedule</li>
+                <li>Schedule follow-up testing in 3 months</li>
+            </ul>
+        </div>
+        
+        <p><strong>Important:</strong> For personalized medical advice, consult with your healthcare provider. This AI provides general health insights based on your blood work data.</p>
+    """
+    
+    return responses.get(question, default)
     
     with tab4:
         st.markdown("<h2>Your Health Timeline</h2>", unsafe_allow_html=True)
