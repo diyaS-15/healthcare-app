@@ -4,3 +4,6 @@ data/
 __pycache__/
 node_modules/
 .env
+blood-report-ai/backend/.env
+blood-report-ai/frontend/.env
+*.pyc

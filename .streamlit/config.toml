@@ -1,0 +1,16 @@
+[theme]
+primaryColor = "#1a3a52"
+backgroundColor = "#f8fafb"
+secondaryBackgroundColor = "#f0f4f8"
+textColor = "#1a3a52"
+font = "sans serif"
+
+[client]
+showErrorDetails = true
+toolbarMode = "viewer"
+
+[server]
+maxUploadSize = 200
+enableCORS = true
+headless = true
+runOnSave = true
